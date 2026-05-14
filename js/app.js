@@ -15,11 +15,12 @@ const state = {
   theme: (() => { try { return localStorage.getItem('theme') || 'dark'; } catch (e) { return 'dark'; } })(),
 };
 
-// Auto-detect if we should use mock or real API
-if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-  state.useMock = false;
+// Use ?mock=true for static demos/screenshots; otherwise prefer the real Flask API.
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('mock') === 'true') {
+  state.useMock = true;
 } else {
-  state.useMock = false; // Set to false to try real API even in production
+  state.useMock = false;
 }
 
 const $ = id => document.getElementById(id);
@@ -49,7 +50,60 @@ document.addEventListener('DOMContentLoaded', () => {
   renderLossCurve('lossCurveChart');
   renderSectorChart();
   initConfFilter();
+  initDemoFromQuery();
 });
+
+function initDemoFromQuery() {
+  const demoMode = urlParams.get('demo') === 'true';
+  const demoTicker = (urlParams.get('ticker') || '').trim().toUpperCase();
+  const demoPage = (urlParams.get('page') || 'home').trim().toLowerCase();
+  if (!demoMode && !demoTicker && demoPage === 'home') return;
+
+  setTimeout(async () => {
+    if (demoMode) seedDemoState();
+    if (demoTicker && STOCKS[demoTicker]) {
+      $('searchInput').value = demoTicker;
+      await loadStock(demoTicker);
+    }
+    if (demoPage && demoPage !== 'home') navigateTo(demoPage);
+    if (demoMode) await hydrateDemoPage(demoPage, demoTicker || 'AAPL');
+  }, 120);
+}
+
+function seedDemoState() {
+  state.watchlist = ['AAPL', 'NVDA', 'MSFT', 'TSLA'];
+  state.portfolio = [];
+  try {
+    localStorage.setItem('wl', JSON.stringify(state.watchlist));
+    localStorage.setItem('portfolio', '[]');
+  } catch (e) { }
+  renderWatchlistPanel();
+}
+
+async function hydrateDemoPage(page, ticker) {
+  if (page === 'forecast') {
+    $('forecastSearch').value = ticker;
+    $('forecastBtn').click();
+    await sleep(1000);
+  } else if (page === 'compare') {
+    $('compareSearch').value = ticker;
+    $('compareBtn').click();
+    await sleep(900);
+  } else if (page === 'screener') {
+    await runScreener();
+  } else if (page === 'news') {
+    $('newsTickerInput').value = '';
+    renderNewsPage();
+  } else if (page === 'portfolio') {
+    state.portfolio = [
+      { ticker: 'AAPL', shares: 12, buyPrice: 180 },
+      { ticker: 'NVDA', shares: 3, buyPrice: 760 },
+      { ticker: 'MSFT', shares: 5, buyPrice: 390 },
+    ];
+    try { localStorage.setItem('portfolio', JSON.stringify(state.portfolio)); } catch (e) { }
+    renderPortfolioPage();
+  }
+}
 
 // ── Theme ─────────────────────────────────────────────────────
 function applyTheme(theme) {
